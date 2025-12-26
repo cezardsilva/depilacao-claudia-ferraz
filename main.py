@@ -1,11 +1,11 @@
 # Arquivo: main.py
-# Versão: 3.2 - Edição e Deleção corrigidas (sem mudar de aba)
+# Versão: 3.3 - Refinamentos: formatação telefone/data, contagem aniversários
 
 import streamlit as st
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
-from datetime import date
+from datetime import date, datetime
 import pandas as pd
 
 # Carregar variáveis
@@ -49,6 +49,22 @@ with st.sidebar:
     st.markdown("---")
     st.caption("💖 Feito com carinho para a Claudia")
 
+# Funções auxiliares
+def format_telefone(tel):
+    tel = ''.join(filter(str.isdigit, tel))  # Remove não-dígitos
+    if len(tel) == 11:
+        return f"({tel[:2]}) {tel[2:7]}-{tel[7:]}"
+    return tel
+
+def format_data(data_str):
+    if data_str:
+        try:
+            d = datetime.fromisoformat(data_str)
+            return d.strftime("%d/%m/%Y")
+        except:
+            return data_str
+    return "-"
+
 # Contar clientes
 @st.cache_data(ttl=30)
 def contar_clientes():
@@ -57,7 +73,24 @@ def contar_clientes():
     except:
         return 0
 
+# Contar aniversários no mês atual
+@st.cache_data(ttl=30)
+def contar_aniversarios():
+    try:
+        response = supabase.table("clientes").select("data_nascimento").execute()
+        mes_atual = datetime.now().month
+        cont = 0
+        for r in response.data:
+            if r['data_nascimento']:
+                d = datetime.fromisoformat(r['data_nascimento'])
+                if d.month == mes_atual:
+                    cont += 1
+        return cont
+    except:
+        return 0
+
 total_clientes = contar_clientes()
+total_aniversarios = contar_aniversarios()
 
 if menu == "🏠 Início":
     col1, col2, col3 = st.columns(3)
@@ -66,7 +99,7 @@ if menu == "🏠 Início":
     with col2:
         st.markdown('<div class="card"><h3>📅 Agendamentos</h3><h2 style="color:#D4AF37;">0</h2><p>hoje</p></div>', unsafe_allow_html=True)
     with col3:
-        st.markdown('<div class="card"><h3>🎂 Aniversários</h3><h2 style="color:#FFB6C1;">0</h2><p>neste mês</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><h3>🎂 Aniversários</h3><h2 style="color:#FFB6C1;">{total_aniversarios}</h2><p>neste mês</p></div>', unsafe_allow_html=True)
     st.success("✅ Sistema conectado com sucesso!")
     if total_clientes > 0:
         st.balloons()
@@ -78,10 +111,10 @@ elif menu == "👩‍🦰 Clientes":
     with tab1:
         with st.form("cadastro_cliente", clear_on_submit=True):
             st.subheader("Cadastrar Nova Cliente")
-            nome = st.text_input("Nome completo *")
-            telefone = st.text_input("Telefone *")
+            nome = st.text_input("Nome completo *", placeholder="Ex: Maria Silva")
+            telefone = st.text_input("Telefone *", placeholder="(11) 91234-5678")
             data_nascimento = st.date_input("Data de nascimento", value=None, min_value=date(1900,1,1))
-            observacoes = st.text_area("Observações")
+            observacoes = st.text_area("Observações", placeholder="Ex: prefere horários à tarde...")
 
             if st.form_submit_button("💾 Salvar Cliente"):
                 if not nome.strip() or not telefone.strip():
@@ -119,8 +152,8 @@ elif menu == "👩‍🦰 Clientes":
                 for _, row in df.iterrows():
                     col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 3, 1, 1])
                     with col1: st.write(row['nome'])
-                    with col2: st.write(row['telefone'])
-                    with col3: st.write(row['data_nascimento'] or "-")
+                    with col2: st.write(format_telefone(row['telefone']))
+                    with col3: st.write(format_data(row['data_nascimento']))
                     with col4: st.write(row['observacoes'] or "-")
                     with col5:
                         if st.button("✏️", key=f"edit_{row['id']}"):
@@ -130,13 +163,12 @@ elif menu == "👩‍🦰 Clientes":
                             st.session_state['cliente_del_id'] = row['id']
                             st.session_state['cliente_del_nome'] = row['nome']
 
-                # --- Modal de Edição (dentro da mesma aba) ---
                 if 'cliente_edit' in st.session_state:
                     cliente = st.session_state['cliente_edit']
                     with st.expander(f"✏️ Editando: {cliente['nome']}", expanded=True):
                         with st.form("form_edit"):
                             novo_nome = st.text_input("Nome *", value=cliente['nome'])
-                            novo_tel = st.text_input("Telefone *", value=cliente['telefone'])
+                            novo_tel = st.text_input("Telefone *", value=cliente['telefone'], placeholder="(11) 91234-5678")
                             nova_data = date.fromisoformat(cliente['data_nascimento']) if cliente['data_nascimento'] else None
                             novo_nasc = st.date_input("Data de nascimento", value=nova_data)
                             novas_obs = st.text_area("Observações", value=cliente['observacoes'] or "")
@@ -165,7 +197,6 @@ elif menu == "👩‍🦰 Clientes":
                                     del st.session_state['cliente_edit']
                                     st.rerun()
 
-                # --- Confirmação de Deleção (dentro da mesma aba) ---
                 if 'cliente_del_id' in st.session_state:
                     nome = st.session_state['cliente_del_nome']
                     with st.expander("🗑️ Confirmação de Exclusão", expanded=True):
@@ -180,8 +211,8 @@ elif menu == "👩‍🦰 Clientes":
                                     del st.session_state['cliente_del_id']
                                     del st.session_state['cliente_del_nome']
                                     st.rerun()
-                                except:
-                                    st.error("Erro ao deletar.")
+                                except Exception as e:
+                                    st.error(f"Erro ao deletar: {str(e)}")  # Log para debug
                         with c2:
                             if st.button("Cancelar"):
                                 del st.session_state['cliente_del_id']
