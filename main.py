@@ -1,5 +1,5 @@
 # Arquivo: main.py
-# Versão: 4.3 Full - Horário correto (Brasília) + Edição/Deleção de agendamentos + Indentação corrigida
+# Versão: 5.0 Final - Sistema completo com Clientes, Agenda, Notificações OneSignal e horário correto (Brasília)
 
 import streamlit as st
 from supabase import create_client, Client
@@ -10,23 +10,32 @@ import pandas as pd
 from streamlit_calendar import calendar
 import locale
 
+# Import correto do OneSignal SDK (versão atual)
+from onesignal_sdk.client import Client as OneSignalClient
+
 # Configurar locale para português do Brasil
 try:
     locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 except:
     pass
 
-# Carregar variáveis
 load_dotenv()
 
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_ANON_KEY")
+onesignal_app_id = os.getenv("ONESIGNAL_APP_ID")
+onesignal_rest_key = os.getenv("ONESIGNAL_REST_API_KEY")
 
 if not supabase_url or not supabase_key:
     st.error("⚠️ Configuração do Supabase não encontrada. Verifique o arquivo .env")
     st.stop()
 
 supabase: Client = create_client(supabase_url, supabase_key)
+
+# OneSignal client
+onesignal_client = None
+if onesignal_app_id and onesignal_rest_key:
+    onesignal_client = OneSignalClient(app_id=onesignal_app_id, rest_api_key=onesignal_rest_key)
 
 st.set_page_config(
     page_title="Depilação Claudia Ferraz",
@@ -141,7 +150,7 @@ def get_status_class(status):
     }
     return mapping.get(status, "status-nao")
 
-# Cache
+# Cache das funções
 @st.cache_data(ttl=30)
 def contar_clientes():
     try:
@@ -153,8 +162,10 @@ def contar_clientes():
 def contar_aniversarios():
     try:
         resp = supabase.table("clientes").select("data_nascimento").execute()
-        mes_atual = datetime.now(TZ_BRASIL).month
-        return sum(1 for r in resp.data if r['data_nascimento'] and datetime.fromisoformat(r['data_nascimento']).month == mes_atual)
+        hoje = datetime.now(TZ_BRASIL)
+        return sum(1 for r in resp.data if r['data_nascimento'] and 
+                  datetime.fromisoformat(r['data_nascimento']).month == hoje.month and 
+                  datetime.fromisoformat(r['data_nascimento']).day == hoje.day)
     except:
         return 0
 
@@ -192,7 +203,7 @@ if menu == "🏠 Início":
     with col2:
         st.markdown(f'<div class="card"><h3>📅 Agendamentos</h3><h2 style="color:#D4AF37;">{total_agendamentos_hoje}</h2><p>hoje</p></div>', unsafe_allow_html=True)
     with col3:
-        st.markdown(f'<div class="card"><h3>🎂 Aniversários</h3><h2 style="color:#FFB6C1;">{total_aniversarios}</h2><p>neste mês</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><h3>🎂 Aniversários</h3><h2 style="color:#FFB6C1;">{total_aniversarios}</h2><p>hoje</p></div>', unsafe_allow_html=True)
 
     st.success("✅ Sistema conectado ao banco de dados com sucesso!")
 
@@ -487,10 +498,57 @@ elif menu == "📅 Agenda":
         else:
             st.info("Nenhum agendamento cadastrado ainda.")
 
-# ==================== OUTRAS PÁGINAS ====================
+# ==================== NOTIFICAÇÕES ====================
 elif menu == "🔔 Notificações":
-    st.header("🔔 Notificações")
-    st.info("Próximo passo: integração com OneSignal para lembretes automáticos!")
+    st.header("🔔 Notificações Push")
+
+    if not onesignal_client:
+        st.error("⚠️ Configure ONESIGNAL_APP_ID e ONESIGNAL_REST_API_KEY no .env")
+        st.stop()
+
+    st.success("✅ OneSignal conectado com sucesso!")
+
+    st.subheader("Teste Manual")
+    mensagem = st.text_input("Mensagem de teste", value="Olá Claudia! As notificações estão funcionando perfeitamente! ✨💖")
+
+    if st.button("Enviar Push de Teste"):
+        import requests
+        import json
+
+        payload = {
+            "app_id": onesignal_app_id,
+            "included_segments": ["All"],
+            "contents": {"pt": mensagem},
+            "headings": {"pt": "Depilação Claudia Ferraz"},
+            "name": "Teste Manual"
+        }
+
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": f"Basic {onesignal_rest_key}"  # Basic para Authentication Key
+        }
+
+        try:
+            response = requests.post(
+                "https://onesignal.com/api/v1/notifications",
+                headers=headers,
+                data=json.dumps(payload)
+            )
+
+            if response.status_code == 200:
+                st.success("✅ Notificação enviada com sucesso! Checa o celular da Claudia agora! 📱✨")
+                st.balloons()
+                st.json(response.json())
+            else:
+                st.error(f"Erro HTTP {response.status_code}")
+                st.code(response.text)
+        except Exception as e:
+            st.error(f"Erro ao enviar: {str(e)}")
+
+    st.markdown("---")
+
+    st.subheader("Notificações Automáticas (em desenvolvimento)")
+    st.info("Em breve: parabéns automáticos, lembretes de agendamento e alerta de retorno.")
 
 elif menu == "⚙️ Configurações":
     st.header("⚙️ Configurações")
