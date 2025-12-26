@@ -1,11 +1,12 @@
 # Arquivo: main.py
-# Versão: 3.0 - Cadastro e listagem de clientes com interface bonita
+# Versão: 3.1 - Cadastro, Listagem, Edição e Exclusão de Clientes
 
 import streamlit as st
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
 from datetime import date
+import pandas as pd
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -28,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS personalizado (melhorado)
+# CSS personalizado (com melhorias para botões)
 st.markdown("""
     <style>
     .main-header {
@@ -55,16 +56,21 @@ st.markdown("""
         text-align: center;
     }
     .stButton>button {
-        background-color: #FFB6C1;
-        color: #1E1E1E;
+        border-radius: 8px;
         font-weight: bold;
-        border-radius: 10px;
-        border: none;
-        padding: 0.6rem 1.5rem;
+        height: 2.5rem;
     }
-    .stButton>button:hover {
-        background-color: #D4AF37;
-        color: white;
+    button[kind="primary"] {
+        background-color: #FFB6C1 !important;
+        color: #1E1E1E !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #D4AF37 !important;
+        color: white !important;
+    }
+    button[kind="secondary"] {
+        background-color: #ff4b4b !important;
+        color: white !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -84,8 +90,8 @@ with st.sidebar:
     st.markdown("---")
     st.caption("💖 Feito com carinho para a Claudia")
 
-# Função para contar clientes
-@st.cache_data(ttl=60)  # Atualiza a cada 60 segundos
+# Função para contar clientes (com cache)
+@st.cache_data(ttl=30)
 def contar_clientes():
     try:
         response = supabase.table("clientes").select("id", count="exact").execute()
@@ -124,30 +130,23 @@ if menu == "🏠 Início":
             """, unsafe_allow_html=True)
 
     st.success("✅ Sistema conectado ao banco de dados com sucesso!")
-    if total_clientes == 0:
-        st.info("🚀 Próximo passo: cadastrar a primeira cliente!")
-    else:
+    if total_clientes > 0:
         st.balloons()
 
 elif menu == "👩‍🦰 Clientes":
     st.header("👩‍🦰 Gerenciar Clientes")
 
-    # Tabs: Cadastro e Listagem
     tab1, tab2 = st.tabs(["✨ Nova Cliente", "📋 Todas as Clientes"])
 
     with tab1:
         with st.form("cadastro_cliente", clear_on_submit=True):
             st.subheader("Cadastrar Nova Cliente")
-
             nome = st.text_input("Nome completo *", placeholder="Ex: Maria Silva")
             telefone = st.text_input("Telefone *", placeholder="(XX) XXXXX-XXXX")
             data_nascimento = st.date_input("Data de nascimento", value=None, min_value=date(1900,1,1))
             observacoes = st.text_area("Observações", placeholder="Ex: prefere horários à tarde, pele sensível...")
 
-            col1, col2, col3 = st.columns([1,1,2])
-            with col1:
-                submitted = st.form_submit_button("💾 Salvar Cliente")
-
+            submitted = st.form_submit_button("💾 Salvar Cliente")
             if submitted:
                 if not nome.strip() or not telefone.strip():
                     st.error("⚠️ Nome e telefone são obrigatórios!")
@@ -161,9 +160,10 @@ elif menu == "👩‍🦰 Clientes":
                         }
                         supabase.table("clientes").insert(data).execute()
                         st.success(f"✅ Cliente **{nome}** cadastrada com sucesso!")
-                        st.cache_data.clear()  # Limpa cache para atualizar contagem
+                        st.cache_data.clear()
+                        st.rerun()
                     except Exception as e:
-                        st.error("❌ Erro ao salvar. Tente novamente.")
+                        st.error("❌ Erro ao salvar. Verifique os dados.")
 
     with tab2:
         st.subheader("Todas as Clientes")
@@ -171,19 +171,99 @@ elif menu == "👩‍🦰 Clientes":
         try:
             response = supabase.table("clientes").select("*").order("nome").execute()
             if response.data:
-                import pandas as pd
                 df = pd.DataFrame(response.data)
-                df = df[['nome', 'telefone', 'data_nascimento', 'observacoes']]
-                df.columns = ['Nome', 'Telefone', 'Data de Nascimento', 'Observações']
+                df_display = df[['nome', 'telefone', 'data_nascimento', 'observacoes']].copy()
+                df_display.columns = ['Nome', 'Telefone', 'Data de Nascimento', 'Observações']
 
                 # Busca
-                busca = st.text_input("🔍 Buscar por nome ou telefone")
+                busca = st.text_input("🔍 Buscar por nome ou telefone", key="busca_clientes")
                 if busca:
-                    df = df[df.apply(lambda row: row.astype(str).str.contains(busca, case=False).any(), axis=1)]
+                    mask = df_display.apply(lambda row: row.astype(str).str.contains(busca, case=False).any(), axis=1)
+                    df_display = df_display[mask]
 
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                # Adicionar colunas de ação
+                for idx, row in df_display.iterrows():
+                    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 4, 1, 1])
+                    with col1:
+                        st.write(row['Nome'])
+                    with col2:
+                        st.write(row['Telefone'])
+                    with col3:
+                        st.write(row['Data de Nascimento'] or "-")
+                    with col4:
+                        st.write(row['Observações'] or "-")
+                    with col5:
+                        if st.button("✏️", key=f"edit_{row.name}"):
+                            st.session_state.editando = df.iloc[row.name].to_dict()
+                            st.rerun()
+                    with col6:
+                        if st.button("🗑️", key=f"delete_{row.name}", type="secondary"):
+                            st.session_state.deletando_id = df.iloc[row.name]['id']
+                            st.session_state.deletando_nome = row['Nome']
+                            st.rerun()
+
+                # Modal de edição
+                if 'editando' in st.session_state:
+                    cliente = st.session_state.editando
+                    with st.form("editar_cliente"):
+                        st.subheader(f"Editando: {cliente['nome']}")
+                        novo_nome = st.text_input("Nome completo *", value=cliente['nome'])
+                        novo_telefone = st.text_input("Telefone *", value=cliente['telefone'])
+                        nova_data = cliente['data_nascimento']
+                        if nova_data:
+                            nova_data = date.fromisoformat(nova_data)
+                        novo_nascimento = st.date_input("Data de nascimento", value=nova_data or None)
+                        novas_obs = st.text_area("Observações", value=cliente['observacoes'] or "")
+
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.form_submit_button("💾 Atualizar"):
+                                if not novo_nome.strip() or not novo_telefone.strip():
+                                    st.error("Nome e telefone obrigatórios!")
+                                else:
+                                    try:
+                                        update_data = {
+                                            "nome": novo_nome.strip(),
+                                            "telefone": novo_telefone.strip(),
+                                            "data_nascimento": str(novo_nascimento) if novo_nascimento else None,
+                                            "observacoes": novas_obs.strip() if novas_obs.strip() else None
+                                        }
+                                        supabase.table("clientes").update(update_data).eq("id", cliente['id']).execute()
+                                        st.success("Cliente atualizada!")
+                                        st.cache_data.clear()
+                                        del st.session_state.editando
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error("Erro ao atualizar.")
+                        with col2:
+                            if st.form_submit_button("Cancelar"):
+                                del st.session_state.editando
+                                st.rerun()
+
+                # Confirmação de deleção
+                if 'deletando_id' in st.session_state:
+                    st.error(f"Tem certeza que deseja **deletar** a cliente **{st.session_state.deletando_nome}**?")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("🗑️ Sim, deletar", type="secondary"):
+                            try:
+                                supabase.table("clientes").delete().eq("id", st.session_state.deletando_id).execute()
+                                st.success("Cliente removida.")
+                                st.cache_data.clear()
+                                del st.session_state.deletando_id
+                                del st.session_state.deletando_nome
+                                st.rerun()
+                            except:
+                                st.error("Erro ao deletar.")
+                    with col2:
+                        if st.button("Cancelar"):
+                            del st.session_state.deletando_id
+                            del st.session_state.deletando_nome
+                            st.rerun()
+
             else:
-                st.info("Nenhuma cliente cadastrada ainda. Vamos começar?")
+                st.info("Nenhuma cliente cadastrada ainda. Cadastre a primeira!")
+
         except Exception as e:
             st.error("Erro ao carregar clientes.")
 
