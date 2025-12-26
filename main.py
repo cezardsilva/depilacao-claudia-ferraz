@@ -1,5 +1,5 @@
 # Arquivo: main.py
-# Versão: 4.0 Full - Sistema completo com Clientes + Agenda bonita
+# Versão: 4.1 Full - Agenda + correções: idioma pt-BR e contraste de botões
 
 import streamlit as st
 from supabase import create_client, Client
@@ -8,8 +8,18 @@ import os
 from datetime import date, datetime, timedelta
 import pandas as pd
 from streamlit_calendar import calendar
+import locale
 
-# Carregar variáveis de ambiente
+# Configurar locale para português do Brasil (datas e calendário)
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
+    except:
+        pass  # Se não der, segue com padrão
+
+# Carregar variáveis
 load_dotenv()
 
 supabase_url = os.getenv("SUPABASE_URL")
@@ -28,7 +38,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS personalizado
+# CSS personalizado (com contraste melhorado nos botões)
 st.markdown("""
     <style>
     .main-header {
@@ -54,22 +64,26 @@ st.markdown("""
         margin: 1rem 0;
         text-align: center;
     }
+    /* Botões primários: rosa com texto escuro para melhor legibilidade */
     button[kind="primary"] {
         background-color: #FFB6C1 !important;
         color: #1E1E1E !important;
+        font-weight: bold !important;
     }
     button[kind="primary"]:hover {
         background-color: #D4AF37 !important;
         color: white !important;
     }
+    /* Botão secundário (vermelho) */
     button[kind="secondary"] {
-        background-color: #ff4b4b !important;
+        background-color: #dc3545 !important;
         color: white !important;
     }
-    .status-nao {background-color: #888888; color: white; padding: 5px 10px; border-radius: 8px;}
-    .status-confirmado {background-color: #28a745; color: white; padding: 5px 10px; border-radius: 8px;}
-    .status-realizado {background-color: #D4AF37; color: #1E1E1E; padding: 5px 10px; border-radius: 8px;}
-    .status-cancelado {background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 8px;}
+    /* Status */
+    .status-nao {background-color: #888888; color: white; padding: 5px 10px; border-radius: 8px; font-size: 0.9rem;}
+    .status-confirmado {background-color: #28a745; color: white; padding: 5px 10px; border-radius: 8px; font-size: 0.9rem;}
+    .status-realizado {background-color: #D4AF37; color: #1E1E1E; padding: 5px 10px; border-radius: 8px; font-size: 0.9rem;}
+    .status-cancelado {background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 8px; font-size: 0.9rem;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -95,13 +109,23 @@ def format_telefone(tel):
         return f"({tel[:2]}) {tel[2:7]}-{tel[7:]}"
     return tel or "-"
 
-def format_data(data_str):
-    if data_str:
+def format_data_hora(data_iso):
+    if data_iso:
         try:
-            return datetime.fromisoformat(data_str).strftime("%d/%m/%Y")
+            dt = datetime.fromisoformat(data_iso)
+            return dt.strftime("%d/%m/%Y às %H:%M")
         except:
             return "-"
     return "-"
+
+def get_status_texto(status):
+    mapping = {
+        "nao_confirmado": "Não Confirmado",
+        "confirmado": "Confirmado",
+        "realizado": "Realizado",
+        "cancelado": "Cancelado"
+    }
+    return mapping.get(status, "Não Confirmado")
 
 def get_status_class(status):
     mapping = {
@@ -112,7 +136,7 @@ def get_status_class(status):
     }
     return mapping.get(status, "status-nao")
 
-# Cache das contagens e dados
+# Cache
 @st.cache_data(ttl=30)
 def contar_clientes():
     try:
@@ -147,9 +171,9 @@ def carregar_agendamentos():
 
 @st.cache_data(ttl=60)
 def contar_agendamentos_hoje():
-    hoje = date.today()
+    hoje = date.today().isoformat()
     agendamentos = carregar_agendamentos()
-    return len([a for a in agendamentos if datetime.fromisoformat(a['data_hora'][:10]).date() == hoje])
+    return len([a for a in agendamentos if a['data_hora'].startswith(hoje)])
 
 total_clientes = contar_clientes()
 total_aniversarios = contar_aniversarios()
@@ -171,6 +195,9 @@ if menu == "🏠 Início":
 
 # ==================== CLIENTES ====================
 elif menu == "👩‍🦰 Clientes":
+    # (mantido exatamente como na versão anterior – funciona perfeitamente)
+    # ... [código completo de clientes igual ao anterior]
+
     st.header("👩‍🦰 Gerenciar Clientes")
     tab1, tab2 = st.tabs(["✨ Nova Cliente", "📋 Todas as Clientes"])
 
@@ -227,10 +254,11 @@ elif menu == "👩‍🦰 Clientes":
                             st.session_state['cliente_del_id'] = row['id']
                             st.session_state['cliente_del_nome'] = row['nome']
 
-                # Edição
+                # Edição e Deleção (igual anterior, com expanders)
                 if 'cliente_edit' in st.session_state:
                     cliente = st.session_state['cliente_edit']
                     with st.expander(f"✏️ Editando: {cliente['nome']}", expanded=True):
+                        # ... (formulário de edição igual antes)
                         with st.form("form_edit"):
                             novo_nome = st.text_input("Nome *", value=cliente['nome'])
                             novo_tel = st.text_input("Telefone *", value=cliente['telefone'], placeholder="(11) 91234-5678")
@@ -255,14 +283,13 @@ elif menu == "👩‍🦰 Clientes":
                                             st.cache_data.clear()
                                             del st.session_state['cliente_edit']
                                             st.rerun()
-                                        except Exception as e:
+                                        except:
                                             st.error("Erro ao atualizar.")
                             with c2:
                                 if st.form_submit_button("Cancelar"):
                                     del st.session_state['cliente_edit']
                                     st.rerun()
 
-                # Deleção
                 if 'cliente_del_id' in st.session_state:
                     nome = st.session_state['cliente_del_nome']
                     with st.expander("🗑️ Confirmação de Exclusão", expanded=True):
@@ -277,7 +304,7 @@ elif menu == "👩‍🦰 Clientes":
                                     del st.session_state['cliente_del_id']
                                     del st.session_state['cliente_del_nome']
                                     st.rerun()
-                                except Exception as e:
+                                except:
                                     st.error("Erro ao deletar.")
                         with c2:
                             if st.button("Cancelar"):
@@ -295,7 +322,7 @@ elif menu == "📅 Agenda":
     clientes_dict = carregar_clientes()
     agendamentos = carregar_agendamentos()
 
-    # Eventos para o calendário
+    # Eventos para calendário
     events = []
     for ag in agendamentos:
         dt = datetime.fromisoformat(ag['data_hora'])
@@ -313,11 +340,24 @@ elif menu == "📅 Agenda":
             "borderColor": color,
         })
 
+    # Opções do calendário em português
     calendar_options = {
-        "headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
+        "headerToolbar": {
+            "left": "prev,next today",
+            "center": "title",
+            "right": "dayGridMonth,timeGridWeek,timeGridDay"
+        },
         "initialView": "dayGridMonth",
         "selectable": True,
         "height": "auto",
+        "locale": "pt-br",  # <<< Calendário em português!
+        "buttonText": {
+            "today": "Hoje",
+            "month": "Mês",
+            "week": "Semana",
+            "day": "Dia"
+        },
+        "dayHeaderFormat": {"weekday": "short"}
     }
 
     calendar(events=events, options=calendar_options, key="main_calendar")
@@ -328,7 +368,7 @@ elif menu == "📅 Agenda":
         with st.form("nova_marcacao"):
             st.subheader("Marcar Novo Horário")
             if not clientes_dict:
-                st.warning("Cadastre pelo menos uma cliente antes de marcar horários.")
+                st.warning("Cadastre pelo menos uma cliente antes.")
             else:
                 cliente_id = st.selectbox("Cliente *", options=list(clientes_dict.keys()), format_func=lambda x: clientes_dict[x])
                 data = st.date_input("Data", value=date.today())
@@ -349,7 +389,7 @@ elif menu == "📅 Agenda":
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
-                        st.error("Erro ao marcar horário.")
+                        st.error("Erro ao marcar.")
 
     with tab2:
         st.subheader("Todos os Agendamentos")
@@ -357,17 +397,18 @@ elif menu == "📅 Agenda":
             for ag in sorted(agendamentos, key=lambda x: x['data_hora'], reverse=True):
                 dt = datetime.fromisoformat(ag['data_hora'])
                 nome = ag['clientes']['nome']
-                status_txt = ag['status'].replace("_", " ").title()
+                status_txt = get_status_texto(ag['status'])
                 with st.container():
                     col1, col2, col3 = st.columns([4, 3, 3])
                     with col1:
                         st.markdown(f"**{nome}**")
-                        st.caption(f"{dt.strftime('%d/%m/%Y às %H:%M')}")
+                        st.caption(format_data_hora(ag['data_hora']))
                     with col2:
                         st.markdown(f"<span class='{get_status_class(ag['status'])}'>{status_txt}</span>", unsafe_allow_html=True)
                     with col3:
                         novo_status = st.selectbox("Alterar status", ["nao_confirmado", "confirmado", "realizado", "cancelado"],
                                                    index=["nao_confirmado", "confirmado", "realizado", "cancelado"].index(ag['status']),
+                                                   label_visibility="collapsed",
                                                    key=f"status_select_{ag['id']}")
                         if st.button("💾 Salvar", key=f"save_status_{ag['id']}"):
                             try:
@@ -391,14 +432,14 @@ elif menu == "📅 Agenda":
         else:
             st.info("Nenhum agendamento cadastrado ainda.")
 
-# Páginas placeholders
+# ==================== OUTRAS PÁGINAS ====================
 elif menu == "🔔 Notificações":
     st.header("🔔 Notificações")
-    st.info("Em breve: integração com OneSignal para lembretes de aniversário, agendamento e retorno após 30 dias.")
+    st.info("Próximo passo: integração com OneSignal para lembretes automáticos!")
 
 elif menu == "⚙️ Configurações":
     st.header("⚙️ Configurações")
-    st.info("Em breve: configurações do salão, horários de funcionamento, etc.")
+    st.info("Em desenvolvimento...")
 
 st.markdown("---")
 st.caption("© 2025 Depilação Claudia Ferraz • Sistema exclusivo e personalizado")
