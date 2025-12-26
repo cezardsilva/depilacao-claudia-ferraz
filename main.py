@@ -1,5 +1,5 @@
 # Arquivo: main.py
-# Versão: 1.0 - Configuração inicial e teste de conexão com Supabase
+# Versão: 2.0 - Interface bonita com tema personalizado e menu lateral
 
 import streamlit as st
 from supabase import create_client, Client
@@ -19,7 +19,7 @@ if not supabase_url or not supabase_key:
 
 supabase: Client = create_client(supabase_url, supabase_key)
 
-# Configuração básica da página
+# Configuração da página
 st.set_page_config(
     page_title="Depilação Claudia Ferraz",
     page_icon="✨",
@@ -27,20 +27,90 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Título principal
-st.title("✨ Depilação Claudia Ferraz")
-st.markdown("### Agenda de Clientes & Agendamentos")
+# CSS personalizado para deixar tudo mais elegante
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 3.5rem;
+        font-weight: 700;
+        text-align: center;
+        background: linear-gradient(90deg, #D4AF37, #FFB6C1);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        font-size: 1.8rem;
+        text-align: center;
+        color: #FFB6C1;
+        margin-bottom: 2rem;
+    }
+    .sidebar .css-1d391kg {
+        background-color: #2D2D2D;
+    }
+    .card {
+        background-color: #2D2D2D;
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(255, 182, 193, 0.2);
+        margin: 1rem 0;
+        text-align: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# Teste de conexão com o banco
-with st.spinner("Conectando ao banco de dados..."):
-    try:
-        response = supabase.table("clientes").select("id", count="exact").limit(1).execute()
-        st.success("✅ Conexão com Supabase estabelecida com sucesso!")
-        st.info(f"Total de clientes na base: {response.count or 0}")
-    except Exception as e:
-        st.error("❌ Erro ao conectar com o Supabase")
-        st.exception(e)
-        st.stop()
+# Header personalizado
+st.markdown('<h1 class="main-header">✨ Depilação Claudia Ferraz ✨</h1>', unsafe_allow_html=True)
+st.markdown('<h2 class="sub-header">Agenda de Clientes & Agendamentos</h2>', unsafe_allow_html=True)
+
+# Sidebar com menu
+with st.sidebar:
+    st.image("https://via.placeholder.com/200x200/FFB6C1/FFFFFF?text=Logo+Claudia", use_column_width=True)
+    st.markdown("### Navegação")
+    menu = st.radio(
+        "Escolha uma opção",
+        ["🏠 Início", "👩‍🦰 Clientes", "📅 Agenda", "🔔 Notificações", "⚙️ Configurações"],
+        label_visibility="collapsed"
+    )
+    st.markdown("---")
+    st.caption("💖 Feito com carinho para a Claudia")
+
+# Conteúdo principal baseado no menu
+if menu == "🏠 Início":
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("""
+            <div class="card">
+                <h3>👥 Clientes</h3>
+                <h2 style="color:#FFB6C1;">0</h2>
+                <p>cadastradas</p>
+            </div>
+            """, unsafe_allow_html=True)
+    with col2:
+        st.markdown("""
+            <div class="card">
+                <h3>📅 Agendamentos</h3>
+                <h2 style="color:#D4AF37;">0</h2>
+                <p>hoje</p>
+            </div>
+            """, unsafe_allow_html=True)
+    with col3:
+        st.markdown("""
+            <div class="card">
+                <h3>🎂 Aniversários</h3>
+                <h2 style="color:#FFB6C1;">0</h2>
+                <p>neste mês</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.success("✅ Sistema conectado ao banco de dados com sucesso!")
+    st.info("🚀 Próximo passo: cadastrar a primeira cliente!")
+
+elif menu == "👩‍🦰 Clientes":
+    st.header("Gerenciar Clientes")
+    st.write("Aqui vamos cadastrar, editar e listar todas as clientes.")
+
+# As outras páginas vamos implementar nas próximas etapas
 
 st.markdown("---")
-st.info("🚀 Próximos passos: vamos criar a interface bonita com tema personalizado!")
+st.caption("© 2025 Depilação Claudia Ferraz • Sistema exclusivo e personalizado")
