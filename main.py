@@ -1,71 +1,118 @@
 # Arquivo: main.py
-# Versão: 3.3 - Refinamentos: formatação telefone/data, contagem aniversários
+# Versão: 4.0 Full - Sistema completo com Clientes + Agenda bonita
 
 import streamlit as st
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import pandas as pd
+from streamlit_calendar import calendar
 
-# Carregar variáveis
+# Carregar variáveis de ambiente
 load_dotenv()
 
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_ANON_KEY")
 
 if not supabase_url or not supabase_key:
-    st.error("⚠️ Configuração do Supabase não encontrada.")
+    st.error("⚠️ Configuração do Supabase não encontrada. Verifique o arquivo .env")
     st.stop()
 
 supabase: Client = create_client(supabase_url, supabase_key)
 
-st.set_page_config(page_title="Depilação Claudia Ferraz", page_icon="✨", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Depilação Claudia Ferraz",
+    page_icon="✨",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# CSS
+# CSS personalizado
 st.markdown("""
     <style>
-    .main-header {font-size: 3.5rem; font-weight: 700; text-align: center;
-                  background: linear-gradient(90deg, #D4AF37, #FFB6C1);
-                  -webkit-background-clip: text; -webkit-text-fill-color: transparent;}
-    .sub-header {font-size: 1.8rem; text-align: center; color: #FFB6C1;}
-    .card {background-color: #2D2D2D; padding: 2rem; border-radius: 15px;
-           box-shadow: 0 4px 15px rgba(255, 182, 193, 0.2); text-align: center;}
-    button[kind="primary"] {background-color: #FFB6C1 !important; color: #1E1E1E !important;}
-    button[kind="primary"]:hover {background-color: #D4AF37 !important; color: white !important;}
-    button[kind="secondary"] {background-color: #ff4b4b !important; color: white !important;}
+    .main-header {
+        font-size: 3.5rem;
+        font-weight: 700;
+        text-align: center;
+        background: linear-gradient(90deg, #D4AF37, #FFB6C1);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        font-size: 1.8rem;
+        text-align: center;
+        color: #FFB6C1;
+        margin-bottom: 2rem;
+    }
+    .card {
+        background-color: #2D2D2D;
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(255, 182, 193, 0.2);
+        margin: 1rem 0;
+        text-align: center;
+    }
+    button[kind="primary"] {
+        background-color: #FFB6C1 !important;
+        color: #1E1E1E !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #D4AF37 !important;
+        color: white !important;
+    }
+    button[kind="secondary"] {
+        background-color: #ff4b4b !important;
+        color: white !important;
+    }
+    .status-nao {background-color: #888888; color: white; padding: 5px 10px; border-radius: 8px;}
+    .status-confirmado {background-color: #28a745; color: white; padding: 5px 10px; border-radius: 8px;}
+    .status-realizado {background-color: #D4AF37; color: #1E1E1E; padding: 5px 10px; border-radius: 8px;}
+    .status-cancelado {background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 8px;}
     </style>
     """, unsafe_allow_html=True)
 
-# Header e Sidebar
+# Header
 st.markdown('<h1 class="main-header">✨ Depilação Claudia Ferraz ✨</h1>', unsafe_allow_html=True)
 st.markdown('<h2 class="sub-header">Agenda de Clientes & Agendamentos</h2>', unsafe_allow_html=True)
 
+# Sidebar
 with st.sidebar:
     st.markdown("### Navegação")
-    menu = st.radio("Escolha uma opção",
+    menu = st.radio(
+        "Escolha uma opção",
         ["🏠 Início", "👩‍🦰 Clientes", "📅 Agenda", "🔔 Notificações", "⚙️ Configurações"],
-        label_visibility="collapsed")
+        label_visibility="collapsed"
+    )
     st.markdown("---")
     st.caption("💖 Feito com carinho para a Claudia")
 
 # Funções auxiliares
 def format_telefone(tel):
-    tel = ''.join(filter(str.isdigit, tel))  # Remove não-dígitos
+    tel = ''.join(filter(str.isdigit, str(tel)))
     if len(tel) == 11:
         return f"({tel[:2]}) {tel[2:7]}-{tel[7:]}"
-    return tel
+    return tel or "-"
 
 def format_data(data_str):
     if data_str:
         try:
-            d = datetime.fromisoformat(data_str)
-            return d.strftime("%d/%m/%Y")
+            return datetime.fromisoformat(data_str).strftime("%d/%m/%Y")
         except:
-            return data_str
+            return "-"
     return "-"
 
-# Contar clientes
+def get_status_class(status):
+    mapping = {
+        "nao_confirmado": "status-nao",
+        "confirmado": "status-confirmado",
+        "realizado": "status-realizado",
+        "cancelado": "status-cancelado"
+    }
+    return mapping.get(status, "status-nao")
+
+# Cache das contagens e dados
 @st.cache_data(ttl=30)
 def contar_clientes():
     try:
@@ -73,37 +120,56 @@ def contar_clientes():
     except:
         return 0
 
-# Contar aniversários no mês atual
 @st.cache_data(ttl=30)
 def contar_aniversarios():
     try:
-        response = supabase.table("clientes").select("data_nascimento").execute()
+        resp = supabase.table("clientes").select("data_nascimento").execute()
         mes_atual = datetime.now().month
-        cont = 0
-        for r in response.data:
-            if r['data_nascimento']:
-                d = datetime.fromisoformat(r['data_nascimento'])
-                if d.month == mes_atual:
-                    cont += 1
-        return cont
+        return sum(1 for r in resp.data if r['data_nascimento'] and datetime.fromisoformat(r['data_nascimento']).month == mes_atual)
     except:
         return 0
 
+@st.cache_data(ttl=60)
+def carregar_clientes():
+    try:
+        resp = supabase.table("clientes").select("id, nome, telefone").order("nome").execute()
+        return {c['id']: f"{c['nome']} - {format_telefone(c['telefone'])}" for c in resp.data}
+    except:
+        return {}
+
+@st.cache_data(ttl=60)
+def carregar_agendamentos():
+    try:
+        resp = supabase.table("agendamentos").select("*, clientes(nome, telefone)").order("data_hora").execute()
+        return resp.data
+    except:
+        return []
+
+@st.cache_data(ttl=60)
+def contar_agendamentos_hoje():
+    hoje = date.today()
+    agendamentos = carregar_agendamentos()
+    return len([a for a in agendamentos if datetime.fromisoformat(a['data_hora'][:10]).date() == hoje])
+
 total_clientes = contar_clientes()
 total_aniversarios = contar_aniversarios()
+total_agendamentos_hoje = contar_agendamentos_hoje()
 
+# ==================== INÍCIO ====================
 if menu == "🏠 Início":
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown(f'<div class="card"><h3>👥 Clientes</h3><h2 style="color:#FFB6C1;">{total_clientes}</h2><p>cadastradas</p></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown('<div class="card"><h3>📅 Agendamentos</h3><h2 style="color:#D4AF37;">0</h2><p>hoje</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><h3>📅 Agendamentos</h3><h2 style="color:#D4AF37;">{total_agendamentos_hoje}</h2><p>hoje</p></div>', unsafe_allow_html=True)
     with col3:
         st.markdown(f'<div class="card"><h3>🎂 Aniversários</h3><h2 style="color:#FFB6C1;">{total_aniversarios}</h2><p>neste mês</p></div>', unsafe_allow_html=True)
-    st.success("✅ Sistema conectado com sucesso!")
+
+    st.success("✅ Sistema conectado ao banco de dados com sucesso!")
     if total_clientes > 0:
         st.balloons()
 
+# ==================== CLIENTES ====================
 elif menu == "👩‍🦰 Clientes":
     st.header("👩‍🦰 Gerenciar Clientes")
     tab1, tab2 = st.tabs(["✨ Nova Cliente", "📋 Todas as Clientes"])
@@ -114,11 +180,11 @@ elif menu == "👩‍🦰 Clientes":
             nome = st.text_input("Nome completo *", placeholder="Ex: Maria Silva")
             telefone = st.text_input("Telefone *", placeholder="(11) 91234-5678")
             data_nascimento = st.date_input("Data de nascimento", value=None, min_value=date(1900,1,1))
-            observacoes = st.text_area("Observações", placeholder="Ex: prefere horários à tarde...")
+            observacoes = st.text_area("Observações")
 
             if st.form_submit_button("💾 Salvar Cliente"):
                 if not nome.strip() or not telefone.strip():
-                    st.error("⚠️ Nome e telefone obrigatórios!")
+                    st.error("⚠️ Nome e telefone são obrigatórios!")
                 else:
                     try:
                         data = {
@@ -128,25 +194,23 @@ elif menu == "👩‍🦰 Clientes":
                             "observacoes": observacoes.strip() if observacoes.strip() else None
                         }
                         supabase.table("clientes").insert(data).execute()
-                        st.success(f"✅ {nome} cadastrada!")
+                        st.success(f"✅ {nome} cadastrada com sucesso!")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
-                        st.error("Erro ao salvar.")
+                        st.error("Erro ao salvar cliente.")
 
     with tab2:
         st.subheader("Todas as Clientes")
-
         try:
             response = supabase.table("clientes").select("*").order("nome").execute()
             if not response.data:
                 st.info("Nenhuma cliente cadastrada ainda.")
             else:
                 df = pd.DataFrame(response.data)
-
                 busca = st.text_input("🔍 Buscar por nome ou telefone")
                 if busca:
-                    mask = df['nome'].str.contains(busca, case=False) | df['telefone'].str.contains(busca, case=False)
+                    mask = df['nome'].str.contains(busca, case=False, na=False) | df['telefone'].str.contains(busca, case=False, na=False)
                     df = df[mask]
 
                 for _, row in df.iterrows():
@@ -163,6 +227,7 @@ elif menu == "👩‍🦰 Clientes":
                             st.session_state['cliente_del_id'] = row['id']
                             st.session_state['cliente_del_nome'] = row['nome']
 
+                # Edição
                 if 'cliente_edit' in st.session_state:
                     cliente = st.session_state['cliente_edit']
                     with st.expander(f"✏️ Editando: {cliente['nome']}", expanded=True):
@@ -186,17 +251,18 @@ elif menu == "👩‍🦰 Clientes":
                                                 "data_nascimento": str(novo_nasc) if novo_nasc else None,
                                                 "observacoes": novas_obs.strip() if novas_obs.strip() else None
                                             }).eq("id", cliente['id']).execute()
-                                            st.success("Atualizado!")
+                                            st.success("Cliente atualizada!")
                                             st.cache_data.clear()
                                             del st.session_state['cliente_edit']
                                             st.rerun()
-                                        except:
+                                        except Exception as e:
                                             st.error("Erro ao atualizar.")
                             with c2:
                                 if st.form_submit_button("Cancelar"):
                                     del st.session_state['cliente_edit']
                                     st.rerun()
 
+                # Deleção
                 if 'cliente_del_id' in st.session_state:
                     nome = st.session_state['cliente_del_nome']
                     with st.expander("🗑️ Confirmação de Exclusão", expanded=True):
@@ -206,13 +272,13 @@ elif menu == "👩‍🦰 Clientes":
                             if st.button("🗑️ Sim, deletar", type="secondary"):
                                 try:
                                     supabase.table("clientes").delete().eq("id", st.session_state['cliente_del_id']).execute()
-                                    st.success(f"{nome} removida.")
+                                    st.success(f"{nome} removida com sucesso.")
                                     st.cache_data.clear()
                                     del st.session_state['cliente_del_id']
                                     del st.session_state['cliente_del_nome']
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Erro ao deletar: {str(e)}")  # Log para debug
+                                    st.error("Erro ao deletar.")
                         with c2:
                             if st.button("Cancelar"):
                                 del st.session_state['cliente_del_id']
@@ -220,7 +286,119 @@ elif menu == "👩‍🦰 Clientes":
                                 st.rerun()
 
         except Exception as e:
-            st.error("Erro ao carregar dados.")
+            st.error("Erro ao carregar clientes.")
+
+# ==================== AGENDA ====================
+elif menu == "📅 Agenda":
+    st.header("📅 Agenda de Atendimentos")
+
+    clientes_dict = carregar_clientes()
+    agendamentos = carregar_agendamentos()
+
+    # Eventos para o calendário
+    events = []
+    for ag in agendamentos:
+        dt = datetime.fromisoformat(ag['data_hora'])
+        color = {
+            "nao_confirmado": "#888888",
+            "confirmado": "#28a745",
+            "realizado": "#D4AF37",
+            "cancelado": "#dc3545"
+        }.get(ag['status'], "#888888")
+        events.append({
+            "title": f"{ag['clientes']['nome']} ({dt.strftime('%H:%M')})",
+            "start": dt.isoformat(),
+            "end": (dt + timedelta(hours=1)).isoformat(),
+            "backgroundColor": color,
+            "borderColor": color,
+        })
+
+    calendar_options = {
+        "headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
+        "initialView": "dayGridMonth",
+        "selectable": True,
+        "height": "auto",
+    }
+
+    calendar(events=events, options=calendar_options, key="main_calendar")
+
+    tab1, tab2 = st.tabs(["✨ Nova Marcação", "📋 Todos os Agendamentos"])
+
+    with tab1:
+        with st.form("nova_marcacao"):
+            st.subheader("Marcar Novo Horário")
+            if not clientes_dict:
+                st.warning("Cadastre pelo menos uma cliente antes de marcar horários.")
+            else:
+                cliente_id = st.selectbox("Cliente *", options=list(clientes_dict.keys()), format_func=lambda x: clientes_dict[x])
+                data = st.date_input("Data", value=date.today())
+                hora = st.time_input("Horário", value=(datetime.now() + timedelta(hours=1)).time())
+                data_hora = datetime.combine(data, hora)
+                observacoes = st.text_area("Observações do agendamento")
+
+                if st.form_submit_button("📅 Marcar Horário"):
+                    try:
+                        insert_data = {
+                            "cliente_id": cliente_id,
+                            "data_hora": data_hora.isoformat(),
+                            "status": "nao_confirmado",
+                            "observacoes": observacoes.strip() if observacoes.strip() else None
+                        }
+                        supabase.table("agendamentos").insert(insert_data).execute()
+                        st.success("Horário marcado com sucesso!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error("Erro ao marcar horário.")
+
+    with tab2:
+        st.subheader("Todos os Agendamentos")
+        if agendamentos:
+            for ag in sorted(agendamentos, key=lambda x: x['data_hora'], reverse=True):
+                dt = datetime.fromisoformat(ag['data_hora'])
+                nome = ag['clientes']['nome']
+                status_txt = ag['status'].replace("_", " ").title()
+                with st.container():
+                    col1, col2, col3 = st.columns([4, 3, 3])
+                    with col1:
+                        st.markdown(f"**{nome}**")
+                        st.caption(f"{dt.strftime('%d/%m/%Y às %H:%M')}")
+                    with col2:
+                        st.markdown(f"<span class='{get_status_class(ag['status'])}'>{status_txt}</span>", unsafe_allow_html=True)
+                    with col3:
+                        novo_status = st.selectbox("Alterar status", ["nao_confirmado", "confirmado", "realizado", "cancelado"],
+                                                   index=["nao_confirmado", "confirmado", "realizado", "cancelado"].index(ag['status']),
+                                                   key=f"status_select_{ag['id']}")
+                        if st.button("💾 Salvar", key=f"save_status_{ag['id']}"):
+                            try:
+                                supabase.table("agendamentos").update({"status": novo_status}).eq("id", ag['id']).execute()
+                                if novo_status == "realizado":
+                                    supabase.table("clientes").update({"ultimo_atendimento": datetime.now().isoformat()}).eq("id", ag['cliente_id']).execute()
+                                st.success("Status atualizado!")
+                                st.cache_data.clear()
+                                st.rerun()
+                            except:
+                                st.error("Erro ao atualizar.")
+                        if st.button("🗑️ Cancelar Agendamento", key=f"cancel_ag_{ag['id']}", type="secondary"):
+                            if st.button("Confirmar Cancelamento", key=f"conf_cancel_ag_{ag['id']}", type="secondary"):
+                                supabase.table("agendamentos").update({"status": "cancelado"}).eq("id", ag['id']).execute()
+                                st.success("Agendamento cancelado.")
+                                st.cache_data.clear()
+                                st.rerun()
+                    if ag['observacoes']:
+                        st.caption(f"📝 {ag['observacoes']}")
+                    st.divider()
+        else:
+            st.info("Nenhum agendamento cadastrado ainda.")
+
+# Páginas placeholders
+elif menu == "🔔 Notificações":
+    st.header("🔔 Notificações")
+    st.info("Em breve: integração com OneSignal para lembretes de aniversário, agendamento e retorno após 30 dias.")
+
+elif menu == "⚙️ Configurações":
+    st.header("⚙️ Configurações")
+    st.info("Em breve: configurações do salão, horários de funcionamento, etc.")
 
 st.markdown("---")
 st.caption("© 2025 Depilação Claudia Ferraz • Sistema exclusivo e personalizado")
