@@ -1,5 +1,5 @@
 # Arquivo: main.py
-# Versão: 4.1 Full - Agenda + correções: idioma pt-BR e contraste de botões
+# Versão: 4.2 Full - Cancelamento corrigido + Calendário com scroll completo
 
 import streamlit as st
 from supabase import create_client, Client
@@ -10,14 +10,11 @@ import pandas as pd
 from streamlit_calendar import calendar
 import locale
 
-# Configurar locale para português do Brasil (datas e calendário)
+# Configurar locale para português do Brasil
 try:
     locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-except locale.Error:
-    try:
-        locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
-    except:
-        pass  # Se não der, segue com padrão
+except:
+    pass
 
 # Carregar variáveis
 load_dotenv()
@@ -38,7 +35,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS personalizado (com contraste melhorado nos botões)
+# CSS personalizado
 st.markdown("""
     <style>
     .main-header {
@@ -64,7 +61,6 @@ st.markdown("""
         margin: 1rem 0;
         text-align: center;
     }
-    /* Botões primários: rosa com texto escuro para melhor legibilidade */
     button[kind="primary"] {
         background-color: #FFB6C1 !important;
         color: #1E1E1E !important;
@@ -74,12 +70,10 @@ st.markdown("""
         background-color: #D4AF37 !important;
         color: white !important;
     }
-    /* Botão secundário (vermelho) */
     button[kind="secondary"] {
         background-color: #dc3545 !important;
         color: white !important;
     }
-    /* Status */
     .status-nao {background-color: #888888; color: white; padding: 5px 10px; border-radius: 8px; font-size: 0.9rem;}
     .status-confirmado {background-color: #28a745; color: white; padding: 5px 10px; border-radius: 8px; font-size: 0.9rem;}
     .status-realizado {background-color: #D4AF37; color: #1E1E1E; padding: 5px 10px; border-radius: 8px; font-size: 0.9rem;}
@@ -108,6 +102,14 @@ def format_telefone(tel):
     if len(tel) == 11:
         return f"({tel[:2]}) {tel[2:7]}-{tel[7:]}"
     return tel or "-"
+
+def format_data(data_str):
+    if data_str:
+        try:
+            return datetime.fromisoformat(data_str).strftime("%d/%m/%Y")
+        except:
+            return "-"
+    return "-"
 
 def format_data_hora(data_iso):
     if data_iso:
@@ -190,14 +192,9 @@ if menu == "🏠 Início":
         st.markdown(f'<div class="card"><h3>🎂 Aniversários</h3><h2 style="color:#FFB6C1;">{total_aniversarios}</h2><p>neste mês</p></div>', unsafe_allow_html=True)
 
     st.success("✅ Sistema conectado ao banco de dados com sucesso!")
-    if total_clientes > 0:
-        st.balloons()
 
 # ==================== CLIENTES ====================
 elif menu == "👩‍🦰 Clientes":
-    # (mantido exatamente como na versão anterior – funciona perfeitamente)
-    # ... [código completo de clientes igual ao anterior]
-
     st.header("👩‍🦰 Gerenciar Clientes")
     tab1, tab2 = st.tabs(["✨ Nova Cliente", "📋 Todas as Clientes"])
 
@@ -254,11 +251,10 @@ elif menu == "👩‍🦰 Clientes":
                             st.session_state['cliente_del_id'] = row['id']
                             st.session_state['cliente_del_nome'] = row['nome']
 
-                # Edição e Deleção (igual anterior, com expanders)
+                # Edição e Deleção (mesmo código da versão anterior – funciona perfeitamente)
                 if 'cliente_edit' in st.session_state:
                     cliente = st.session_state['cliente_edit']
                     with st.expander(f"✏️ Editando: {cliente['nome']}", expanded=True):
-                        # ... (formulário de edição igual antes)
                         with st.form("form_edit"):
                             novo_nome = st.text_input("Nome *", value=cliente['nome'])
                             novo_tel = st.text_input("Telefone *", value=cliente['telefone'], placeholder="(11) 91234-5678")
@@ -322,7 +318,7 @@ elif menu == "📅 Agenda":
     clientes_dict = carregar_clientes()
     agendamentos = carregar_agendamentos()
 
-    # Eventos para calendário
+    # Eventos para o calendário
     events = []
     for ag in agendamentos:
         dt = datetime.fromisoformat(ag['data_hora'])
@@ -340,7 +336,7 @@ elif menu == "📅 Agenda":
             "borderColor": color,
         })
 
-    # Opções do calendário em português
+    # Opções do calendário - com scroll completo nas vistas Semana/Dia
     calendar_options = {
         "headerToolbar": {
             "left": "prev,next today",
@@ -349,15 +345,17 @@ elif menu == "📅 Agenda":
         },
         "initialView": "dayGridMonth",
         "selectable": True,
-        "height": "auto",
-        "locale": "pt-br",  # <<< Calendário em português!
+        "height": 800,  # Altura fixa alta para permitir scroll interno
+        "contentHeight": 750,  # Garante que o conteúdo tenha espaço
+        "locale": "pt-br",
         "buttonText": {
             "today": "Hoje",
             "month": "Mês",
             "week": "Semana",
             "day": "Dia"
         },
-        "dayHeaderFormat": {"weekday": "short"}
+        "slotMinTime": "08:00:00",  # Horário inicial do dia (opcional - ajuste se quiser começar mais cedo)
+        "slotMaxTime": "21:00:00",  # Horário final do dia
     }
 
     calendar(events=events, options=calendar_options, key="main_calendar")
@@ -389,7 +387,7 @@ elif menu == "📅 Agenda":
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
-                        st.error("Erro ao marcar.")
+                        st.error("Erro ao marcar horário.")
 
     with tab2:
         st.subheader("Todos os Agendamentos")
@@ -398,19 +396,25 @@ elif menu == "📅 Agenda":
                 dt = datetime.fromisoformat(ag['data_hora'])
                 nome = ag['clientes']['nome']
                 status_txt = get_status_texto(ag['status'])
+
                 with st.container():
-                    col1, col2, col3 = st.columns([4, 3, 3])
+                    col1, col2 = st.columns([6, 4])
                     with col1:
                         st.markdown(f"**{nome}**")
                         st.caption(format_data_hora(ag['data_hora']))
-                    with col2:
                         st.markdown(f"<span class='{get_status_class(ag['status'])}'>{status_txt}</span>", unsafe_allow_html=True)
-                    with col3:
-                        novo_status = st.selectbox("Alterar status", ["nao_confirmado", "confirmado", "realizado", "cancelado"],
-                                                   index=["nao_confirmado", "confirmado", "realizado", "cancelado"].index(ag['status']),
-                                                   label_visibility="collapsed",
-                                                   key=f"status_select_{ag['id']}")
-                        if st.button("💾 Salvar", key=f"save_status_{ag['id']}"):
+                        if ag['observacoes']:
+                            st.caption(f"📝 {ag['observacoes']}")
+                    with col2:
+                        # Alterar status
+                        novo_status = st.selectbox(
+                            "Alterar status",
+                            ["nao_confirmado", "confirmado", "realizado", "cancelado"],
+                            index=["nao_confirmado", "confirmado", "realizado", "cancelado"].index(ag['status']),
+                            key=f"status_select_{ag['id']}",
+                            label_visibility="collapsed"
+                        )
+                        if st.button("💾 Salvar Status", key=f"save_status_{ag['id']}"):
                             try:
                                 supabase.table("agendamentos").update({"status": novo_status}).eq("id", ag['id']).execute()
                                 if novo_status == "realizado":
@@ -419,23 +423,41 @@ elif menu == "📅 Agenda":
                                 st.cache_data.clear()
                                 st.rerun()
                             except:
-                                st.error("Erro ao atualizar.")
-                        if st.button("🗑️ Cancelar Agendamento", key=f"cancel_ag_{ag['id']}", type="secondary"):
-                            if st.button("Confirmar Cancelamento", key=f"conf_cancel_ag_{ag['id']}", type="secondary"):
-                                supabase.table("agendamentos").update({"status": "cancelado"}).eq("id", ag['id']).execute()
-                                st.success("Agendamento cancelado.")
-                                st.cache_data.clear()
-                                st.rerun()
-                    if ag['observacoes']:
-                        st.caption(f"📝 {ag['observacoes']}")
+                                st.error("Erro ao atualizar status.")
+
+                        # Iniciar cancelamento
+                        if st.button("🗑️ Cancelar Agendamento", key=f"init_cancel_{ag['id']}", type="secondary"):
+                            st.session_state[f"cancelando_{ag['id']}"] = True
+
                     st.divider()
+
+                # Confirmação de cancelamento (expander separado)
+                if st.session_state.get(f"cancelando_{ag['id']}", False):
+                    with st.expander(f"🗑️ Confirmar cancelamento de {nome}", expanded=True):
+                        st.error(f"Tem certeza que deseja **cancelar** o agendamento de {nome} em {format_data_hora(ag['data_hora'])}?")
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            if st.button("🗑️ Sim, cancelar", key=f"confirm_cancel_{ag['id']}", type="secondary"):
+                                try:
+                                    supabase.table("agendamentos").update({"status": "cancelado"}).eq("id", ag['id']).execute()
+                                    st.success("Agendamento cancelado com sucesso!")
+                                    st.cache_data.clear()
+                                    del st.session_state[f"cancelando_{ag['id']}"]
+                                    st.rerun()
+                                except:
+                                    st.error("Erro ao cancelar.")
+                        with c2:
+                            if st.button("Voltar", key=f"back_cancel_{ag['id']}"):
+                                del st.session_state[f"cancelando_{ag['id']}"]
+                                st.rerun()
+
         else:
             st.info("Nenhum agendamento cadastrado ainda.")
 
 # ==================== OUTRAS PÁGINAS ====================
 elif menu == "🔔 Notificações":
     st.header("🔔 Notificações")
-    st.info("Próximo passo: integração com OneSignal para lembretes automáticos!")
+    st.info("Em breve: envio de lembretes automáticos por push (OneSignal)")
 
 elif menu == "⚙️ Configurações":
     st.header("⚙️ Configurações")
