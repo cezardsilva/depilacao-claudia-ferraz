@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: depilacao-claudia-ferraz
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run main.py --server.port 8080 --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: SUPABASE_URL
+        value: https://gkplmxxjqaenqxfptblo.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrcGxteHhqcWFlbnF4ZnB0YmxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY3NTY0NTcsImV4cCI6MjA4MjMzMjQ1N30.yjBTFi8tz7TLCNXehXJHs-PS411aRcyQS16EBeNFxaM
+      - key: ONESIGNAL_APP_ID
+        value: 2c7287a5-19a0-4cdb-bf41-ec39d92104b9
+      - key: ONESIGNAL_REST_API_KEY
+        value: zn1skburnudrnuy73zw6aglae
+        
