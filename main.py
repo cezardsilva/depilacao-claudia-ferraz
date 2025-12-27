@@ -1,5 +1,5 @@
 # Arquivo: main.py
-# Versão: 5.0 Final - Sistema completo com Clientes, Agenda, Notificações OneSignal e horário correto (Brasília)
+# Versão: 5.1 - Sistema completo com Clientes, Agenda, Notificações OneSignal e horário correto (Brasília)
 
 import streamlit as st
 from supabase import create_client, Client
@@ -544,6 +544,19 @@ elif menu == "🔔 Notificações":
                 st.code(response.text)
         except Exception as e:
             st.error(f"Erro ao enviar: {str(e)}")
+
+    # Integração do OneSignal Web SDK (para registrar dispositivos e mostrar popup)
+    st.markdown(f"""
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+    window.OneSignal = window.OneSignal || [];
+    OneSignal.push(function() {{
+        OneSignal.init({{
+        appId: "{onesignal_app_id}",
+        }});
+    }});
+    </script>
+    """, unsafe_allow_html=True)
 
     st.markdown("---")
 
