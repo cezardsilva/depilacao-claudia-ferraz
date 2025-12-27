@@ -545,24 +545,25 @@ elif menu == "🔔 Notificações":
         except Exception as e:
             st.error(f"Erro ao enviar: {str(e)}")
 
-    # Integração OneSignal Web Push (método oficial para Streamlit)
+    # Integração OneSignal Web Push (versão que funciona em Streamlit/Render)
     st.components.v1.html(
-        f"""
-        <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
+        """
+        <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
         <script>
-        window.OneSignal = window.OneSignal || [];
-        OneSignal.push(function() {{
-            OneSignal.init({{
-            appId: "{onesignal_app_id}",
-            notifyButton: {{
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        OneSignalDeferred.push(async function(OneSignal) {
+            await OneSignal.init({
+            appId: "%s",
+            safari_web_id: "web.onesignal.auto",
+            notifyButton: {
                 enable: true,
-            }},
-            allowLocalhostAsSecureOrigin: true,  # importante para teste local
-            }});
-        }});
+            },
+            allowLocalhostAsSecureOrigin: true,
+            });
+        });
         </script>
-        """,
-        height=0
+        """ % onesignal_app_id,
+        height=0,
     )
 
     st.markdown("---")
